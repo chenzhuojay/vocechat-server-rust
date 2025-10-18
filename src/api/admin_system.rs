@@ -269,6 +269,29 @@ impl ApiAdminSystem {
         Ok(PlainText(new_third_party_secret))
     }
 
+    /// Get common system information
+    #[oai(path = "/common", method = "get")]
+    async fn get_common(
+        &self,
+        state: Data<&State>,
+        _token: Token,
+    ) -> Result<Json<serde_json::Value>> {
+        let org_entry = state.load_dynamic_config::<OrganizationConfig>().await?;
+        let frontend_url = state
+            .get_dynamic_config_instance::<FrontendUrlConfig>()
+            .await
+            .and_then(|config| config.url.clone())
+            .unwrap_or_default();
+        
+        let response = serde_json::json!({
+            "organization": org_entry.config,
+            "frontend_url": frontend_url,
+            "version": env!("CARGO_PKG_VERSION")
+        });
+        
+        Ok(Json(response))
+    }
+
     /// Get the frontend url
     #[oai(path = "/frontend_url", method = "get")]
     async fn get_frontend_url(

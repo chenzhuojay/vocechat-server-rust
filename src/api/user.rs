@@ -303,6 +303,26 @@ pub struct ApiUser;
 
 #[OpenApi(prefix_path = "/user", tag = "ApiTags::User")]
 impl ApiUser {
+    /// Get user contacts
+    #[oai(path = "/contacts", method = "get")]
+    async fn get_contacts(&self, state: Data<&State>, token: Token) -> Result<Json<Vec<UserInfo>>> {
+        let cache = state.cache.read().await;
+        let user = cache
+            .users
+            .get(&token.uid)
+            .ok_or_else(|| Error::from_status(StatusCode::UNAUTHORIZED))?;
+        
+        // Get all users except the current user
+        let contacts: Vec<UserInfo> = cache
+            .users
+            .iter()
+            .filter(|(&uid, _)| uid != token.uid)
+            .map(|(&uid, user)| user.api_user_info(uid))
+            .collect();
+        
+        Ok(Json(contacts))
+    }
+    
     /// Check the invite magic token is valid
     #[oai(path = "/check_magic_token", method = "post")]
     async fn check_magic_token(

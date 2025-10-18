@@ -96,6 +96,17 @@ impl ApiAdminAgora {
         Ok(())
     }
 
+    /// Check if Agora is enabled
+    #[oai(path = "/enabled", method = "get")]
+    async fn is_enabled(
+        &self,
+        state: Data<&State>,
+        _token: Token,
+    ) -> Result<Json<bool>> {
+        let entry = state.load_dynamic_config::<AgoraConfig>().await?;
+        Ok(Json(entry.enabled))
+    }
+
     /// Get Agora config
     #[oai(path = "/config", method = "get")]
     async fn get_config(

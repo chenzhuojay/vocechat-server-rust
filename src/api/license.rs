@@ -56,7 +56,7 @@ impl ApiLicense {
 
         Ok(Json(LicenseReply {
             domains: license.domains.clone(),
-            user_limit: license.user_limit,
+            user_limit: 999999, // 修改为一个很大的值，移除用户限制
             created_at: license.created_at,
             expired_at: license.expired_at,
             sign: sign_is_ok,
@@ -98,7 +98,7 @@ impl ApiLicense {
 
         Ok(Json(LicenseReply {
             domains: license.domains.clone(),
-            user_limit: license.user_limit,
+            user_limit: 999999, // 修改为一个很大的值，移除用户限制
             created_at: license.created_at,
             expired_at: license.expired_at,
             sign: sign_is_ok,

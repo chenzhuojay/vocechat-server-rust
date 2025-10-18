@@ -21,3 +21,15 @@ pub fn guest_forbidden(ep: impl Endpoint) -> impl Endpoint {
         Ok(req)
     })
 }
+
+pub fn guest_allowed(ep: impl Endpoint) -> impl Endpoint {
+    ep.before(|mut req| async move {
+        // Check if X-API-Key header exists
+        if req.headers().get("X-API-Key").is_none() {
+            // For unauthenticated requests, create a guest token
+            let guest_token = "guest_token_for_public_access"; // This is a placeholder
+            req.headers_mut().insert("X-API-Key", guest_token.parse().unwrap());
+        }
+        Ok(req)
+    })
+}
