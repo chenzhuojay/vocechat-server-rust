@@ -87,6 +87,8 @@ pub struct UploadFileResponse {
     pub image_properties: Option<ImageProperties>,
 }
 
+// FileDeleteRequest struct removed as we're using Query<String> directly
+
 #[derive(Debug, Object)]
 struct CreateArchiveMsgRequest {
     mid_list: Vec<i64>,
@@ -337,6 +339,92 @@ impl ApiResource {
         Ok(Json(None))
     }
 
+    /// Delete all chat files
+    #[oai(path = "/file/delete", method = "delete")]
+    async fn delete_file(
+        &self,
+        state: Data<&State>,
+        _token: Token,
+    ) -> Result<Json<bool>> {
+        // 使用非递归方式遍历目录并删除所有文件
+        fn delete_all_files_in_directory(dir_path: &std::path::Path) -> poem::Result<()> {
+            if !dir_path.exists() || !dir_path.is_dir() {
+                return Ok(());
+            }
+
+            // 使用Vec作为栈来存储待处理的路径
+            let mut paths_to_process = Vec::new();
+            paths_to_process.push(dir_path.to_path_buf());
+
+            // 首先自底向上收集所有文件路径
+            let mut all_files = Vec::new();
+            
+            while let Some(current_path) = paths_to_process.pop() {
+                if current_path.is_file() {
+                    all_files.push(current_path);
+                } else if current_path.is_dir() {
+                    if let Ok(entries) = std::fs::read_dir(&current_path) {
+                        for entry in entries {
+                            if let Ok(entry) = entry {
+                                let path = entry.path();
+                                paths_to_process.push(path);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 然后删除所有收集到的文件
+            for file_path in all_files {
+                std::fs::remove_file(&file_path).map_err(InternalServerError)?;
+            }
+
+            Ok(())
+        }
+
+        // Delete all files in data_dir/upload directory and its subdirectories
+        let upload_dir = state.config.system.data_dir.join("upload");
+        if upload_dir.exists() {
+            // 先删除根目录下的文件
+            if let Ok(entries) = std::fs::read_dir(&upload_dir) {
+                for entry in entries {
+                    if let Ok(entry) = entry {
+                        let path = entry.path();
+                        if path.is_file() {
+                            std::fs::remove_file(&path).map_err(InternalServerError)?;
+                        }
+                    }
+                }
+            }
+            
+            // 对于子目录，使用非递归函数删除所有文件
+            if let Ok(entries) = std::fs::read_dir(&upload_dir) {
+                for entry in entries {
+                    if let Ok(entry) = entry {
+                        let path = entry.path();
+                        if path.is_dir() {
+                            delete_all_files_in_directory(&path)?;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Also clean temp files for completeness
+        let tmp_dir = state.config.system.tmp_dir();
+        if tmp_dir.exists() {
+            let mut entries = tokio::fs::read_dir(&tmp_dir).await.map_err(InternalServerError)?;
+            while let Some(entry) = entries.next_entry().await.map_err(InternalServerError)? {
+                let path = entry.path();
+                if path.is_file() {
+                    tokio::fs::remove_file(&path).await.map_err(InternalServerError)?;
+                }
+            }
+        }
+        
+        Ok(Json(true))
+    }
+    
     /// Download file
     #[oai(path = "/file", method = "get")]
     async fn download_file(
@@ -357,6 +445,11 @@ impl ApiResource {
         };
         let path = base_dir.join(file_path.as_str());
         let path_meta = base_dir.join(file_path.as_str()).with_extension("meta");
+
+        // 添加文件存在性检查
+        if tokio::fs::metadata(&path).await.is_err() {
+            return Err(Error::from_status(StatusCode::NOT_FOUND));
+        }
 
         let meta = tokio::fs::read(&path_meta)
             .await
